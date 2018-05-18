@@ -790,8 +790,9 @@ struct ContiguousFreeList(ParentAllocator,
     import std.experimental.allocator.building_blocks.region : Region;
     import std.experimental.allocator.gc_allocator : GCAllocator;
     import std.typecons : Ternary;
-    alias A = ContiguousFreeList!(Region!GCAllocator, 0, 64);
-    auto a = A(Region!GCAllocator(1024 * 4), 1024);
+    alias A = ContiguousFreeList!(Region!GCAllocator*, 0, 64);
+    auto r = Region!GCAllocator(1024 * 4);
+    auto a = A(&r, 1024);
 
     assert((() nothrow @safe @nogc => a.empty)() == Ternary.yes);
 
