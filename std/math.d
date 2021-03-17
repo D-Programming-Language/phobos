@@ -6418,6 +6418,27 @@ if (isFloatingPoint!(X))
  */
 bool isIdentical(real x, real y) @trusted pure nothrow @nogc
 {
+    if (__ctfe)
+    {
+        if (x !is y) return false;
+        if (x == x) return true; // If not NaN `is` implies identical representation.
+        static if (double.mant_dig != real.mant_dig)
+        {
+            // Works because we are in CTFE and there is no way in CTFE to set more
+            // bits of NaN payload than can fit in a double, and since 2.087
+            // changed real.init to be non-signaling I *think* there is no way in
+            // CTFE for a real to be a signaling NaN unless real and double have
+            // the same representation so real's bits can be manipulated directly.
+            double d1 = x, d2 = y;
+        }
+        else
+        {
+            // Alias to avoid converting signaling to quiet.
+            alias d1 = x;
+            alias d2 = y;
+        }
+        return *cast(long*) &d1 == *cast(long*) &d2;
+    }
     // We're doing a bitwise comparison so the endianness is irrelevant.
     long*   pxs = cast(long *)&x;
     long*   pys = cast(long *)&y;
@@ -6455,6 +6476,18 @@ bool isIdentical(real x, real y) @trusted pure nothrow @nogc
     assert(!isIdentical(real.infinity, -real.infinity));
 }
 
+@safe @nogc pure nothrow unittest
+{
+    static assert( isIdentical(0.0, 0.0));
+    static assert( isIdentical(1.0, 1.0));
+    static assert( isIdentical(real.infinity, real.infinity));
+    static assert( isIdentical(-real.infinity, -real.infinity));
+    static assert( isIdentical(real.nan, real.nan));
+
+    static assert(!isIdentical(0.0, -0.0));
+    static assert(!isIdentical(real.nan, -real.nan));
+    static assert(!isIdentical(real.infinity, -real.infinity));
+}
 /*********************************
  * Return 1 if sign bit of e is set, 0 if not.
  */
