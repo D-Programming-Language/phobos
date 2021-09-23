@@ -4796,15 +4796,15 @@ package template WideElementType(T)
  * Convenience functions for converting one or more arguments
  * of any type into _text (the three character widths).
  */
-string text(T...)(T args)
+string text(T...)(const(T) args)
 if (T.length > 0) { return textImpl!string(args); }
 
 ///ditto
-wstring wtext(T...)(T args)
+wstring wtext(T...)(const(T) args)
 if (T.length > 0) { return textImpl!wstring(args); }
 
 ///ditto
-dstring dtext(T...)(T args)
+dstring dtext(T...)(const(T) args)
 if (T.length > 0) { return textImpl!dstring(args); }
 
 ///
@@ -4834,7 +4834,7 @@ if (T.length > 0) { return textImpl!dstring(args); }
     assert(dtext(cs, ' ', ws, " ", ds) == "今日は 여보세요 Здравствуйте"d);
 }
 
-private S textImpl(S, U...)(U args)
+private S textImpl(S, U...)(const(U) args)
 {
     static if (U.length == 0)
     {
