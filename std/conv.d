@@ -4834,6 +4834,41 @@ if (T.length > 0) { return textImpl!dstring(args); }
     assert(dtext(cs, ' ', ws, " ", ds) == "今日は 여보세요 Здравствуйте"d);
 }
 
+// ensure that ranges are still printed properly
+@safe unittest
+{
+    static struct Range
+    {
+        int counter = 0;
+
+    @safe pure nothrow @nogc:
+        bool empty() const => (counter <= 0);
+        int front() const => counter;
+        void popFront() { --counter; }
+    }
+
+    auto m = Range(2);
+    assert(text(m) == "[2, 1]");
+
+    //const c = Range(3);
+    //assert(text(c) == "const(Range)(3)");
+}
+
+// ensure that a usage pattern seen in libraries like "unit-threaded" keeps working
+@safe unittest
+{
+    static final class Foo
+    {
+        override string toString() const @safe
+        {
+            return ":-)";
+        }
+    }
+
+    const c = new Foo();
+    assert(text(c) == ":-)");
+}
+
 private S textImpl(S, U...)(const(U) args)
 {
     static if (U.length == 0)
