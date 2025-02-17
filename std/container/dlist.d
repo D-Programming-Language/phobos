@@ -451,7 +451,7 @@ iterating over the container are never invalidated.
 
 Returns: The number of elements inserted
 
-Complexity: $(BIGOH log(n))
+Complexity: $(BIGOH 1)
      */
     size_t insertFront(Stuff)(Stuff stuff)
     {
