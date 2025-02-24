@@ -4626,7 +4626,8 @@ enum SpanMode
         ["animals", "plants"]));
 }
 
-private struct DirIteratorImpl
+private struct DirIteratorImpl(alias pred = (scope ref DirEntry entry) => true)
+if (__traits(compiles, { DirEntry entry; bool _ = pred(entry); }))
 {
   @safe:
     SpanMode _mode;
@@ -4712,7 +4713,7 @@ private struct DirIteratorImpl
                     return false;
                 }
             _cur = DirEntry(_stack[$-1].dirpath, findinfo);
-            return true;
+            return pred(_cur);
         }
 
         void popDirStack() @trusted
@@ -4730,6 +4731,8 @@ private struct DirIteratorImpl
 
         bool mayStepIn()
         {
+            if (!pred(_cur))
+                return false;
             return _followSymlink ? _cur.isDir : _cur.isDir && !_cur.isSymlink;
         }
     }
@@ -4766,7 +4769,7 @@ private struct DirIteratorImpl
                     core.stdc.string.strcmp(&fdata.d_name[0], ".."))
                 {
                     _cur = DirEntry(_stack[$-1].dirpath, fdata);
-                    return true;
+                    return pred(_cur);
                 }
             }
 
@@ -4789,6 +4792,8 @@ private struct DirIteratorImpl
 
         bool mayStepIn()
         {
+            if (!pred(_cur))
+                return false;
             return _followSymlink ? _cur.isDir : attrIsDir(_cur.linkAttributes);
         }
     }
@@ -4834,7 +4839,7 @@ private struct DirIteratorImpl
 
     void popFront()
     {
-        switch (_mode)
+        final switch (_mode)
         {
         case SpanMode.depth:
             if (next())
@@ -4862,7 +4867,7 @@ private struct DirIteratorImpl
             else
                 while (!empty && !next()){}
             break;
-        default:
+        case SpanMode.shallow:
             next();
         }
     }
@@ -4873,16 +4878,17 @@ private struct DirIteratorImpl
     }
 }
 
+struct _DirIterator(alias pred = (scope ref DirEntry entry) => true, bool useDIP1000)
+if (__traits(compiles, { DirEntry entry; bool _ = pred(entry); }))
 // Must be a template, because the destructor is unsafe or safe depending on
 // whether `-preview=dip1000` is in use. Otherwise, linking errors would
 // result.
-struct _DirIterator(bool useDIP1000)
 {
     static assert(useDIP1000 == dip1000Enabled,
         "Please don't override useDIP1000 to disagree with compiler switch.");
 
 private:
-    SafeRefCounted!(DirIteratorImpl, RefCountedAutoInitialize.no) impl;
+    SafeRefCounted!(DirIteratorImpl!(pred), RefCountedAutoInitialize.no) impl;
 
     this(string pathname, SpanMode mode, bool followSymlink) @trusted
     {
@@ -4896,7 +4902,7 @@ public:
 
 // This has the client code to automatically use and link to the correct
 // template instance
-alias DirIterator = _DirIterator!dip1000Enabled;
+alias DirIterator = _DirIterator!((scope ref DirEntry entry) => true, dip1000Enabled);
 
 /++
     Returns an $(REF_ALTTEXT input range, isInputRange, std,range,primitives)
@@ -5005,10 +5011,11 @@ scan("");
 
 // For some reason, doing the same alias-to-a-template trick as with DirIterator
 // does not work here.
-auto dirEntries(bool useDIP1000 = dip1000Enabled)
+auto dirEntries(alias pred = (scope ref DirEntry entry) => true, bool useDIP1000 = dip1000Enabled)
     (string path, SpanMode mode, bool followSymlink = true)
+if (__traits(compiles, { DirEntry entry; bool _ = pred(entry); }))
 {
-    return _DirIterator!useDIP1000(path, mode, followSymlink);
+    return _DirIterator!(pred, useDIP1000)(path, mode, followSymlink);
 }
 
 /// Duplicate functionality of D1's `std.file.listdir()`:
@@ -5108,15 +5115,16 @@ auto dirEntries(bool useDIP1000 = dip1000Enabled)
 }
 
 /// Ditto
-auto dirEntries(bool useDIP1000 = dip1000Enabled)
+auto dirEntries(alias pred = (scope ref DirEntry entry) => true, bool useDIP1000 = dip1000Enabled)
     (string path, string pattern, SpanMode mode,
     bool followSymlink = true)
+if (__traits(compiles, { DirEntry entry; bool _ = pred(entry); }))
 {
     import std.algorithm.iteration : filter;
     import std.path : globMatch, baseName;
 
     bool f(DirEntry de) { return globMatch(baseName(de.name), pattern); }
-    return filter!f(_DirIterator!useDIP1000(path, mode, followSymlink));
+    return filter!f(_DirIterator!(pred, useDIP1000)(path, mode, followSymlink));
 }
 
 @safe unittest
@@ -5221,6 +5229,14 @@ auto dirEntries(bool useDIP1000 = dip1000Enabled)
     sort(result);
 
     assert(equal(files, result));
+
+    foreach (const spanMode; [EnumMembers!(SpanMode)]) {
+        import std.algorithm : endsWith;
+        auto result2 = dirEntries!((scope ref DirEntry entry) => entry.name.endsWith("Hello World"))(dir, spanMode).map!((return a) => a.name.normalize()).array();
+        import std.stdio;
+        writeln(result2);
+        assert(result2.length == 1);
+    }
 }
 
 // https://issues.dlang.org/show_bug.cgi?id=21250
