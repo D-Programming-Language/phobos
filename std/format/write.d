@@ -694,6 +694,92 @@ if (isSomeString!(typeof(fmt)))
     // writer.formattedWrite!"%d is the ultimate %s."(3.14, "answer");
 }
 
+import core.interpolation;
+
+/**
+Converts its arguments according to a format IES and writes
+the result to an output range.
+
+Params:
+    w = an $(REF_ALTTEXT output range, isOutputRange, std, range, primitives),
+        where the formatted result is written to
+    seq = a sequence consisting of the arguments appended to the end of the
+          format IES
+    Writer = the type of the writer `w`
+    FormatandArgs = the types making up the format IES followed by the types
+                    of the arguments.
+
+Returns:
+    The index of the last argument that was formatted. If no positional
+    arguments are used, this is the number of arguments that where formatted.
+
+Throws:
+    A $(REF_ALTTEXT FormatException, FormatException, std, format)
+    if formatting did not succeed.
+
+Note:
+    In theory this function should be `@nogc`. But with the current
+    implementation there are some cases where allocations occur.
+    See $(REF_ALTTEXT $(D sformat), sformat, std, format) for more details.
+ */
+uint formattedWrite(Writer, FormatandArgs ...)(auto ref Writer w, FormatandArgs seq)
+if (is(typeof(seq[0]) == InterpolationHeader))
+{
+    string toPass;
+    bool expr = false;
+    import std.conv : text;
+    import std.format : FormatException;
+
+    foreach (i, e; seq[1 .. $])
+    {
+        static if (__traits(hasMember, e, "toString") && is(typeof(e) == InterpolatedLiteral!(e.toString)))
+        {
+            toPass ~= e.toString;
+        }
+        else static if (__traits(hasMember, e, "expression") && is(typeof(e) == InterpolatedExpression!(e.expression)))
+        {
+            expr = true;
+        }
+        else static if (is(typeof(e) == InterpolationFooter))
+        {
+            if (i < seq.length - 2)
+                return formattedWrite(w, toPass, seq[i + 2 .. $]);
+            else
+                break;
+        }
+        else
+        {
+            if (expr)
+            {
+                toPass ~= e.text;
+                expr = false;
+            }
+            else
+                throw new FormatException(
+                text("Unterminated Interpolated Expression Sequence:  expected `InterpolationFooter` at index ",
+                i + 1, ". Got: `", typeof(e).stringof, "`"));
+        }
+    }
+    return formattedWrite(w, toPass);
+}
+
+/// Fix https://issues.dlang.org/show_bug.cgi?id=24550
+@safe pure unittest
+{
+    import std.array : appender;
+
+    auto writer = appender!string();
+    string str1 = "%d";
+    string str2 = "%s";
+    formattedWrite(writer, i"$(str1) is the ultimate $(str2).", 42, "answer");
+    assert(writer[] == "42 is the ultimate answer.");
+
+    const string w = "World";
+    writer = appender!string();
+    writer.formattedWrite(i"Hello $(w)");
+    assert(writer[] == "Hello World");
+}
+
 @safe pure unittest
 {
     import std.array : appender;
