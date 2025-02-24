@@ -4796,15 +4796,15 @@ package template WideElementType(T)
  * Convenience functions for converting one or more arguments
  * of any type into _text (the three character widths).
  */
-string text(T...)(T args)
+string text(T...)(const(T) args)
 if (T.length > 0) { return textImpl!string(args); }
 
 ///ditto
-wstring wtext(T...)(T args)
+wstring wtext(T...)(const(T) args)
 if (T.length > 0) { return textImpl!wstring(args); }
 
 ///ditto
-dstring dtext(T...)(T args)
+dstring dtext(T...)(const(T) args)
 if (T.length > 0) { return textImpl!dstring(args); }
 
 ///
@@ -4834,7 +4834,42 @@ if (T.length > 0) { return textImpl!dstring(args); }
     assert(dtext(cs, ' ', ws, " ", ds) == "今日は 여보세요 Здравствуйте"d);
 }
 
-private S textImpl(S, U...)(U args)
+// ensure that ranges are still printed properly
+@safe unittest
+{
+    static struct Range
+    {
+        int counter = 0;
+
+    @safe pure nothrow @nogc:
+        bool empty() const => (counter <= 0);
+        int front() const => counter;
+        void popFront() { --counter; }
+    }
+
+    auto m = Range(2);
+    assert(text(m) == "[2, 1]");
+
+    //const c = Range(3);
+    //assert(text(c) == "const(Range)(3)");
+}
+
+// ensure that a usage pattern seen in libraries like "unit-threaded" keeps working
+@safe unittest
+{
+    static final class Foo
+    {
+        override string toString() const @safe
+        {
+            return ":-)";
+        }
+    }
+
+    const c = new Foo();
+    assert(text(c) == ":-)");
+}
+
+private S textImpl(S, U...)(const(U) args)
 {
     static if (U.length == 0)
     {
