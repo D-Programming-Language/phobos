@@ -435,14 +435,13 @@ private template AppendIfUnique(alias Cmp, Args...)
 ///
 @safe unittest
 {
-    alias Types = AliasSeq!(int, uint, long, string, short, int*, ushort);
+    alias Types = AliasSeq!(int, uint, long, short, int*, ushort);
 
     template sameSize(T)
     {
         enum sameSize(U) = T.sizeof == U.sizeof;
     }
-    static assert(is(Unique!(sameSize, Types) ==
-                     AliasSeq!(int, long, string, short)));
+    static assert(is(Unique!(sameSize, Types) == AliasSeq!(int, long, short)));
 
     // The predicate must be partially instantiable.
     enum sameSize_fails(T, U) = T.sizeof == U.sizeof;

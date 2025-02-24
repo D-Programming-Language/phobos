@@ -3,7 +3,10 @@
 Phobos V3 Build Script
 
 Usage:
-  ./build_v3.d [debug,release,unittest]
+  ./build_v3.d [debug|release|unittest|unittest-debug|unittest-release]
+
+Environment Variables:
+  DMD=[/path/to/compiler]
 */
 
 import std.conv;
@@ -18,12 +21,23 @@ int main(string[] args)
 {
     int result = 0;
 
+    immutable compiler = environment.get("DMD", "dmd").buildNormalizedPath();
+
     bool buildUnittest = false;
     bool buildRelease = false;
-    if (args.length > 1)
+
+    if(args.length > 1)
     {
-        buildUnittest = args[1] == "unittest";
-        buildRelease = args[1] == "release";
+        switch(args[1])
+        {
+            case "release": buildRelease = true; break;
+            // This should be changed to run the tests in both debug and release
+            // modes, but that's a larger change.
+            case "unittest": buildUnittest = true; break;
+            case "unittest-debug": buildUnittest = true; break;
+            case "unittest-release": buildUnittest = true; goto case "release";
+            default: break;
+        }
     }
 
     string argFilePath = buildNormalizedPath(getcwd(), "phobosbuildargs.txt");
@@ -47,7 +61,7 @@ int main(string[] args)
         if (exists(unittestExecutable)) remove(unittestExecutable);
     }
 
-    result = runCommand("dmd --version", getcwd());
+    result = runCommand(format("%s --version", compiler), getcwd());
     if (result != 0)
     {
         writeln("Compiler Failure.");
@@ -69,7 +83,6 @@ int main(string[] args)
     {
         argFile.writeln("-main");
         argFile.writeln("-unittest");
-        argFile.writeln("-debug");
 
         version(Windows)
         {
@@ -80,24 +93,19 @@ int main(string[] args)
             argFile.writeln("-of=unittest");
         }
     }
-    else if (buildRelease)
-    {
-        argFile.writeln("-release -O");
-        argFile.writeln("-lib");
-        argFile.writeln("-of=libphobos3");
-    }
     else
     {
-        argFile.writeln("-debug");
         argFile.writeln("-lib");
-        argFile.writeln("-of=libphobos3-debug");
+        argFile.writefln("-of=libphobos3%s", buildRelease ? "" : "-debug");
     }
+
+    argFile.writeln(buildRelease ? "-release -O" : "-debug");
 
     argFile.flush();
     argFile.close();
 
     //Run the build.
-    result = runCommand("dmd @\"" ~ argFilePath ~ "\"", getcwd());
+    result = runCommand(format(`%s @"%s"`, compiler, argFilePath), getcwd());
     if (result != 0)
     {
         writeln("Build failed.");

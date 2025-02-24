@@ -337,6 +337,7 @@ else
 unittest : unittest-debug unittest-release
 unittest-%:
 	$(MAKE) unittest OS=$(OS) MODEL=$(MODEL) DMD=$(DMD) BUILD=$*
+	DMD=$(DMD) $(DMD) -run build_v3.d unittest-$*
 endif
 
 ################################################################################
