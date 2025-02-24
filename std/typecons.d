@@ -9676,29 +9676,14 @@ are no pointers to it. As such, it is illegal to move a scoped object.
 template scoped(T)
 if (is(T == class))
 {
-    // _d_newclass now use default GC alignment (looks like (void*).sizeof * 2 for
-    // small objects). We will just use the maximum of filed alignments.
-    enum alignment = __traits(classInstanceAlignment, T);
-    alias aligned = _alignUp!alignment;
-
     static struct Scoped
     {
-        // Addition of `alignment` is required as `Scoped_store` can be misaligned in memory.
-        private void[aligned(__traits(classInstanceSize, T) + size_t.sizeof) + alignment] Scoped_store = void;
+        private align(__traits(classInstanceAlignment, T))
+            void[__traits(classInstanceSize, T)] buffer = void;
 
         @property inout(T) Scoped_payload() inout
         {
-            void* alignedStore = cast(void*) aligned(cast(size_t) Scoped_store.ptr);
-            // As `Scoped` can be unaligned moved in memory class instance should be moved accordingly.
-            immutable size_t d = alignedStore - Scoped_store.ptr;
-            size_t* currD = cast(size_t*) &Scoped_store[$ - size_t.sizeof];
-            if (d != *currD)
-            {
-                import core.stdc.string : memmove;
-                memmove(alignedStore, Scoped_store.ptr + *currD, __traits(classInstanceSize, T));
-                *currD = d;
-            }
-            return cast(inout(T)) alignedStore;
+            return cast(inout(T)) buffer.ptr;
         }
         alias Scoped_payload this;
 
@@ -9707,9 +9692,7 @@ if (is(T == class))
 
         ~this()
         {
-            // `destroy` will also write .init but we have no functions in druntime
-            // for deterministic finalization and memory releasing for now.
-            .destroy(Scoped_payload);
+            .destroy!false(Scoped_payload);
         }
     }
 
@@ -9721,10 +9704,7 @@ if (is(T == class))
         import core.lifetime : emplace, forward;
 
         Scoped result = void;
-        void* alignedStore = cast(void*) aligned(cast(size_t) result.Scoped_store.ptr);
-        immutable size_t d = alignedStore - result.Scoped_store.ptr;
-        *cast(size_t*) &result.Scoped_store[$ - size_t.sizeof] = d;
-        emplace!(Unqual!T)(result.Scoped_store[d .. $ - size_t.sizeof], forward!args);
+        emplace!(Unqual!T)(result.buffer, forward!args);
         return result;
     }
 }
@@ -9809,13 +9789,6 @@ if (is(T == class))
     auto b2 = new B(6);
     assert(b2.a.x == 6);
     destroy(*b2); // calls A's destructor for b2.a
-}
-
-private size_t _alignUp(size_t alignment)(size_t n)
-if (alignment > 0 && !((alignment - 1) & alignment))
-{
-    enum badEnd = alignment - 1; // 0b11, 0b111, ...
-    return (n + badEnd) & ~badEnd;
 }
 
 // https://issues.dlang.org/show_bug.cgi?id=6580 testcase
