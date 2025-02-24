@@ -1170,7 +1170,10 @@ auto make(T, Allocator, A...)(auto ref Allocator alloc, auto ref A args)
     import std.algorithm.comparison : max;
     static if (!is(T == class) && !is(T == interface) && A.length == 0
         && __traits(compiles, {T t;}) && __traits(isZeroInit, T)
-        && is(typeof(alloc.allocateZeroed(size_t.max))))
+        && is(typeof(alloc.allocateZeroed(size_t.max)))
+        && (!is(typeof(alloc.alignedAllocate(size_t.max, uint.max))) ||
+           ( is(typeof(alloc.alignedAllocate(size_t.max, uint.max))) && Allocator.alignment == T.alignof)
+        ))
     {
         auto m = alloc.allocateZeroed(max(T.sizeof, 1));
         return (() @trusted => cast(T*) m.ptr)();
@@ -1180,7 +1183,22 @@ auto make(T, Allocator, A...)(auto ref Allocator alloc, auto ref A args)
         import core.internal.lifetime : emplaceRef;
         import core.lifetime : emplace;
 
-        auto m = alloc.allocate(max(stateSize!T, 1));
+        static if (is(typeof(alloc.alignedAllocate(size_t.max, uint.max))))
+        {
+            static if (is(T == class))
+            {
+                import std.traits : classInstanceAlignment;
+                auto m = alloc.alignedAllocate(max(stateSize!T, 1), classInstanceAlignment!T);
+            }
+            else
+            {
+                auto m = alloc.alignedAllocate(max(stateSize!T, 1), T.alignof);
+            }
+        }
+        else
+        {
+            auto m = alloc.allocate(max(stateSize!T, 1));
+        }
         if (!m.ptr) return null;
 
         // make can only be @safe if emplace or emplaceRef is `pure`
@@ -1593,14 +1611,20 @@ T[] makeArray(T, Allocator)(auto ref Allocator alloc, size_t length)
         if (overflow) return null;
     }
 
-    static if (__traits(isZeroInit, T) && hasMember!(Allocator, "allocateZeroed"))
+    static if (__traits(isZeroInit, T)
+        && hasMember!(Allocator, "allocateZeroed")
+        && !hasMember!(Allocator, "alignedAllocate")
+    )
     {
         auto m = alloc.allocateZeroed(nAlloc);
         return (() @trusted => cast(T[]) m)();
     }
     else
     {
-        auto m = alloc.allocate(nAlloc);
+        static if (hasMember!(Allocator, "alignedAllocate"))
+            auto m = alloc.alignedAllocate(nAlloc, T.alignof);
+        else
+            auto m = alloc.allocate(nAlloc);
         if (!m.ptr) return null;
         alias U = Unqual!T;
         return () @trusted { return cast(T[]) uninitializedFillDefault(cast(U[]) m); }();
