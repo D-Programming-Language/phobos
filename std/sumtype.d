@@ -720,16 +720,24 @@ public:
     {
         static if (is(This == Rhs))
         {
-            return AliasSeq!(this, rhs).match!((ref value, ref rhsValue) {
-                static if (is(typeof(value) == typeof(rhsValue)))
+            final switch(tag)
+            {
+                static foreach(idx, T; Types)
                 {
-                    return value == rhsValue;
+                    case idx:
+                        final switch (rhs.tag)
+                        {
+                            static foreach(ridx, U; typeof(rhs).Types)
+                            {
+                                case ridx:
+                                    static if (is(immutable T == immutable U))
+                                        return get!T == rhs.get!U;
+                                    else
+                                        return false;
+                            }
+                        }
                 }
-                else
-                {
-                    return false;
-                }
-            });
+            }
         }
         else
         {
