@@ -25,10 +25,17 @@ static import core.stdc.math;
 
 import std.traits : isFloatingPoint, isIntegral, Unqual;
 
+version (LDC)
+{
+    version (CRuntime_Microsoft) version = LDC_MSVCRT;
+}
+
 version (D_InlineAsm_X86)    version = InlineAsm_X86_Any;
 version (D_InlineAsm_X86_64) version = InlineAsm_X86_Any;
 
-version (InlineAsm_X86_Any) version = InlineAsm_X87;
+version (LDC_MSVCRT)   {}
+else version (Android) {}
+else version (InlineAsm_X86_Any) version = InlineAsm_X87;
 version (InlineAsm_X87)
 {
     static assert(real.mant_dig == 64);
