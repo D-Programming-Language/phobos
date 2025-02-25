@@ -1116,12 +1116,7 @@ Throws: `ErrnoException` if the file is not opened or if the call to `fwrite` fa
             }
         }
 
-        auto result = trustedFwrite(_p.handle, buffer);
-        if (result == result.max) result = 0;
-        errnoEnforce(result == buffer.length,
-                text("Wrote ", result, " instead of ", buffer.length,
-                        " objects of type ", T.stringof, " to file `",
-                        _name, "'"));
+        _rawWrite(_p.handle, buffer, _name);
     }
 
     ///
@@ -3038,10 +3033,7 @@ is empty, throws an `Exception`. In case of an I/O error throws
             {
                 if (orientation_ <= 0)
                 {
-                    //file.write(writeme); causes infinite recursion!!!
-                    //file.rawWrite(writeme);
-                    auto result = trustedFwrite(file_._p.handle, writeme);
-                    if (result != writeme.length) errnoEnforce(0);
+                    _rawWrite(file_._p.handle, writeme, file_._name);
                     return;
                 }
             }
@@ -3263,12 +3255,7 @@ is empty, throws an `Exception`. In case of an I/O error throws
             import std.conv : text;
             import std.exception : errnoEnforce;
 
-            auto result = trustedFwrite(file_._p.handle, buffer);
-            if (result == result.max) result = 0;
-            errnoEnforce(result == buffer.length,
-                    text("Wrote ", result, " instead of ", buffer.length,
-                            " objects of type ", T.stringof, " to file `",
-                            name, "'"));
+            _rawWrite(file_._p.handle, buffer, file_._name);
         }
 
         version (Windows)
@@ -4528,6 +4515,31 @@ if ((isSomeFiniteCharInputRange!R1 || isSomeString!R1) &&
         }
     }
     return _fopenImpl(namez, modez);
+}
+
+@trusted
+private void _rawWrite(T)(FILE* handle, in T[] buffer, string name = null)
+{
+    import std.conv : text;
+    import std.exception : errnoEnforce;
+
+    size_t result;
+    do
+    {
+        .clearerr(handle);
+        result += trustedFwrite(handle, buffer[result .. $]);
+
+        import core.stdc.errno : errno, EAGAIN;
+        if (.ferror(handle) && errno != EAGAIN)
+            break;
+    }
+    while (result < buffer.length);
+
+    if (result == result.max) result = 0;
+    errnoEnforce(result == buffer.length,
+            text("Wrote ", result, " instead of ", buffer.length,
+                    " objects of type ", T.stringof, " to file `",
+                    name, "'"));
 }
 
 version (Posix)
