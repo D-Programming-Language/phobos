@@ -3804,79 +3804,103 @@ enum LockType
 
 struct LockingTextReader
 {
-    private File _f;
-    private char _front;
-    private bool _hasChar;
+    private static struct Impl
+    {
+        private File _f;
+        private char _front;
+        private bool _hasChar;
+
+        this(File f)
+        {
+            import std.exception : enforce;
+            enforce(f.isOpen, "LockingTextReader: File must be open");
+            _f = f;
+            _FLOCK(_f._p.handle);
+        }
+
+        @disable this(this);
+
+        ~this()
+        {
+            if (_hasChar)
+                ungetc(_front, cast(FILE*)_f._p.handle);
+
+            // File locking has its own reference count
+            if (_f.isOpen) _FUNLOCK(_f._p.handle);
+        }
+
+        void opAssign(typeof(this) r)
+        {
+            import std.algorithm.mutation : swap;
+            swap(this, r);
+        }
+
+        @property bool empty()
+        {
+            if (!_hasChar)
+            {
+                if (!_f.isOpen || _f.eof)
+                    return true;
+                immutable int c = _FGETC(cast(_iobuf*) _f._p.handle);
+                if (c == EOF)
+                {
+                    .destroy(_f);
+                    return true;
+                }
+                _front = cast(char) c;
+                _hasChar = true;
+            }
+            return false;
+        }
+
+        @property char front()
+        {
+            if (!_hasChar)
+            {
+                version (assert)
+                {
+                    import core.exception : RangeError;
+                    if (empty)
+                        throw new RangeError();
+                }
+                else
+                {
+                    empty;
+                }
+            }
+            return _front;
+        }
+
+        void popFront()
+        {
+            if (!_hasChar)
+                empty;
+            _hasChar = false;
+        }
+    }
+
+    import std.typecons : SafeRefCounted, borrow;
+
+    private SafeRefCounted!Impl impl;
 
     this(File f)
     {
-        import std.exception : enforce;
-        enforce(f.isOpen, "LockingTextReader: File must be open");
-        _f = f;
-        _FLOCK(_f._p.handle);
-    }
-
-    this(this)
-    {
-        _FLOCK(_f._p.handle);
-    }
-
-    ~this()
-    {
-        if (_hasChar)
-            ungetc(_front, cast(FILE*)_f._p.handle);
-
-        // File locking has its own reference count
-        if (_f.isOpen) _FUNLOCK(_f._p.handle);
-    }
-
-    void opAssign(LockingTextReader r)
-    {
-        import std.algorithm.mutation : swap;
-        swap(this, r);
+        impl = SafeRefCounted!Impl(f);
     }
 
     @property bool empty()
     {
-        if (!_hasChar)
-        {
-            if (!_f.isOpen || _f.eof)
-                return true;
-            immutable int c = _FGETC(cast(_iobuf*) _f._p.handle);
-            if (c == EOF)
-            {
-                .destroy(_f);
-                return true;
-            }
-            _front = cast(char) c;
-            _hasChar = true;
-        }
-        return false;
+        return impl.borrow!((ref r) => r.empty);
     }
 
     @property char front()
     {
-        if (!_hasChar)
-        {
-            version (assert)
-            {
-                import core.exception : RangeError;
-                if (empty)
-                    throw new RangeError();
-            }
-            else
-            {
-                empty;
-            }
-        }
-        return _front;
+        return impl.borrow!((ref r) => r.front);
     }
 
     void popFront()
     {
-        if (!_hasChar)
-            empty;
-        _hasChar = false;
+        impl.borrow!((ref r) { r.popFront; });
     }
 }
 
@@ -3952,6 +3976,29 @@ struct LockingTextReader
     // Error format read
     while (!fr.eof)
         fr.readf("%s;%s;%s;%s\n", &nom, &fam, &nam, &ot);
+}
+
+// https://issues.dlang.org/show_bug.cgi?id=24165
+@system unittest
+{
+    // @system due to readf
+   static import std.file;
+   import std.algorithm.iteration : joiner, map;
+   import std.algorithm.searching : canFind;
+   import std.array : array;
+   import std.utf : byChar;
+
+   string content = "-hello";
+   auto deleteme = testFilename();
+   std.file.write(deleteme, content);
+   scope(exit) std.file.remove(deleteme);
+   File f = File(deleteme);
+   int n;
+   try f.readf("%d", n);
+   catch (Exception e) {}
+   // Data read must match what was written
+   char[] result = f.byLine(Yes.keepTerminator).map!byChar.joiner.array;
+   assert(content.canFind(result));
 }
 
 /**
