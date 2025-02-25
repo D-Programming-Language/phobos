@@ -976,9 +976,17 @@ See_Also: $(LREF only) to chain values to a range
  */
 auto chain(Ranges...)(Ranges rs)
 if (Ranges.length > 0 &&
-    allSatisfy!(isInputRange, staticMap!(Unqual, Ranges)) &&
-    !is(CommonType!(staticMap!(ElementType, staticMap!(Unqual, Ranges))) == void))
+    anySatisfy!(isInputRange, staticMap!(Unqual, Ranges)))
 {
+    alias R = staticMap!(Unqual, Ranges);
+    static foreach (T; R)
+    {
+        static assert(isInputRange!T, "`", T, "` is not an input range");
+    }
+    alias RvalueElementType = CommonType!(staticMap!(ElementType, R));
+    static assert(!is(RvalueElementType == void),
+        "No common element type for ranges `", Ranges, "`");
+
     static if (Ranges.length == 1)
     {
         return rs[0];
@@ -988,8 +996,6 @@ if (Ranges.length > 0 &&
         static struct Result
         {
         private:
-            alias R = staticMap!(Unqual, Ranges);
-            alias RvalueElementType = CommonType!(staticMap!(.ElementType, R));
             template sameET(A)
             {
                 enum sameET = is(.ElementType!A == RvalueElementType);
@@ -1821,9 +1827,11 @@ Returns:
     A range type dependent on `R1` and `R2`.
  */
 auto choose(R1, R2)(bool condition, return scope R1 r1, return scope R2 r2)
-if (isInputRange!(Unqual!R1) && isInputRange!(Unqual!R2) &&
-    !is(CommonType!(ElementType!(Unqual!R1), ElementType!(Unqual!R2)) == void))
+if (isInputRange!(Unqual!R1) && isInputRange!(Unqual!R2))
 {
+    static assert(!is(CommonType!(ElementType!(Unqual!R1), ElementType!(Unqual!R2)) == void),
+        "No common element type for `", R1, "` and `", R2, "`");
+
     size_t choice = condition? 0: 1;
     return ChooseResult!(R1, R2)(choice, r1, r2);
 }
@@ -2292,11 +2300,18 @@ Returns:
     alias of that range's type.
  */
 auto chooseAmong(Ranges...)(size_t index, return scope Ranges rs)
-if (Ranges.length >= 2
-        && allSatisfy!(isInputRange, staticMap!(Unqual, Ranges))
-        && !is(CommonType!(staticMap!(ElementType, Ranges)) == void))
+if (Ranges.length >= 2 &&
+    anySatisfy!(isInputRange, staticMap!(Unqual, Ranges)))
 {
-        return ChooseResult!Ranges(index, rs);
+    alias URs = staticMap!(Unqual, Ranges);
+    static foreach (T; URs)
+    {
+        static assert(isInputRange!T, "`", T, "` is not an input range");
+    }
+    static assert(!is(CommonType!(staticMap!(ElementType, URs)) == void),
+        "No common element type for `", Ranges, "`");
+
+    return ChooseResult!Ranges(index, rs);
 }
 
 ///
