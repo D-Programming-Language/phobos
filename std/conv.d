@@ -4854,27 +4854,32 @@ private S textImpl(S, U...)(U args)
         // assume that on average, parameters will have less
         // than 20 elements
         app.reserve(U.length * 20);
-        // Must be static foreach because of https://issues.dlang.org/show_bug.cgi?id=21209
-        static foreach (arg; args)
-        {
-            static if (
-                isSomeChar!(typeof(arg))
-                || isSomeString!(typeof(arg))
-                || ( isInputRange!(typeof(arg)) && isSomeChar!(ElementType!(typeof(arg))) )
-            )
-                app.put(arg);
-            else static if (
-
-                is(immutable typeof(arg) == immutable uint) || is(immutable typeof(arg) == immutable ulong) ||
-                is(immutable typeof(arg) == immutable int) || is(immutable typeof(arg) == immutable long)
-            )
-                // https://issues.dlang.org/show_bug.cgi?id=17712#c15
-                app.put(textImpl!(S)(arg));
-            else
-                app.put(to!S(arg));
-        }
-
+        app.writeTextImpl!S(args);
         return app.data;
+    }
+}
+
+private void writeTextImpl(S, Sink, U...)(ref Sink sink, U args)
+if (isSomeString!S && isOutputRange!(Sink, ElementEncodingType!S))
+{
+    // Must be static foreach because of https://issues.dlang.org/show_bug.cgi?id=21209
+    static foreach (arg; args)
+    {
+        static if (
+            isSomeChar!(typeof(arg))
+            || isSomeString!(typeof(arg))
+            || ( isInputRange!(typeof(arg)) && isSomeChar!(ElementType!(typeof(arg))) )
+        )
+            put(sink, arg);
+        else static if (
+
+            is(immutable typeof(arg) == immutable uint) || is(immutable typeof(arg) == immutable ulong) ||
+            is(immutable typeof(arg) == immutable int) || is(immutable typeof(arg) == immutable long)
+        )
+            // https://issues.dlang.org/show_bug.cgi?id=17712#c15
+            put(sink, textImpl!(S)(arg));
+        else
+            put(sink, to!S(arg));
     }
 }
 
