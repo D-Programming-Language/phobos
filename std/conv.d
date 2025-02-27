@@ -18,6 +18,9 @@ $(TR $(TD Strings) $(TD
         $(LREF text)
         $(LREF wtext)
         $(LREF dtext)
+        $(LREF writeText)
+        $(LREF writeWText)
+        $(LREF writeDText)
         $(LREF hexString)
 ))
 $(TR $(TD Numeric) $(TD
@@ -4832,6 +4835,75 @@ if (T.length > 0) { return textImpl!dstring(args); }
     assert( text(cs, ' ', ws, " ", ds) == "今日は 여보세요 Здравствуйте"c);
     assert(wtext(cs, ' ', ws, " ", ds) == "今日は 여보세요 Здравствуйте"w);
     assert(dtext(cs, ' ', ws, " ", ds) == "今日は 여보세요 Здравствуйте"d);
+}
+
+/// Convenience functions for writing arguments to an output range as text.
+void writeText(Sink, T...)(ref Sink sink, T args)
+if (isOutputRange!(Sink, char) && T.length > 0)
+{
+    sink.writeTextImpl!string(args);
+}
+
+/// ditto
+void writeWText(Sink, T...)(ref Sink sink, T args)
+if (isOutputRange!(Sink, wchar) && T.length > 0)
+{
+    sink.writeTextImpl!wstring(args);
+}
+
+/// ditto
+void writeDText(Sink, T...)(ref Sink sink, T args)
+if (isOutputRange!(Sink, dchar) && T.length > 0)
+{
+    sink.writeTextImpl!dstring(args);
+}
+
+///
+@safe unittest
+{
+    import std.array : appender;
+
+    auto output = appender!string();
+    output.writeText("The answer is ", 42);
+
+    assert(output.data == "The answer is 42");
+}
+
+///
+@safe unittest
+{
+    import std.array : appender;
+
+    const color = "red";
+    auto output = appender!string();
+    output.writeText(i"My favorite color is $(color)");
+
+    assert(output.data == "My favorite color is red");
+}
+
+@safe unittest
+{
+    auto capp = appender!string();
+    auto wapp = appender!wstring();
+    auto dapp = appender!dstring();
+
+    capp.writeText(42, ' ', 1.5, ": xyz");
+    wapp.writeWText(42, ' ', 1.5, ": xyz");
+    dapp.writeDText(42, ' ', 1.5, ": xyz");
+
+    assert(capp.data == "42 1.5: xyz"c);
+    assert(wapp.data == "42 1.5: xyz"w);
+    assert(dapp.data == "42 1.5: xyz"d);
+}
+
+// Check range API compliance using OutputRange interface
+@system unittest
+{
+    import std.range.interfaces : OutputRange, outputRangeObject;
+    import std.range : nullSink;
+
+    OutputRange!char testOutput = outputRangeObject!char(nullSink);
+    testOutput.writeText(42, ' ', 1.5, ": xyz");
 }
 
 private S textImpl(S, U...)(U args)
