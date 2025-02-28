@@ -90,6 +90,7 @@ $(LREF environment), $(LREF thisProcessID) and $(LREF thisThreadID).
 module std.process;
 
 import core.thread : ThreadID;
+import core.sync.rwmutex;
 
 version (Posix)
 {
@@ -159,6 +160,13 @@ private
 // =============================================================================
 // Environment variable manipulation.
 // =============================================================================
+
+shared ReadWriteMutex mutex;
+
+shared static this()
+{
+    mutex = new shared ReadWriteMutex(mutex.Policy.PREFER_READERS);
+}
 
 /**
 Manipulates _environment variables using an associative-array-like
@@ -259,12 +267,14 @@ static:
             import std.exception : enforce, errnoEnforce;
             if (value is null)
             {
+                // Note: remove needs write lock
                 remove(name);
                 return value;
             }
-            if (core.sys.posix.stdlib.setenv(name.tempCString(), value.tempCString(), 1) != -1)
+            synchronized (mutex.writer)
             {
-                return value;
+                if (core.sys.posix.stdlib.setenv(name.tempCString(), value.tempCString(), 1) != -1)
+                    return value;
             }
             // The default errno error message is very uninformative
             // in the most common case, so we handle it manually.
@@ -277,6 +287,8 @@ static:
         else version (Windows)
         {
             import std.windows.syserror : wenforce;
+
+            synchronized (mutex.writer)
             wenforce(
                 SetEnvironmentVariableW(name.tempCStringW(), value.tempCStringW()),
             );
@@ -296,8 +308,9 @@ static:
     multi-threaded programs. See e.g.
     $(LINK2 https://www.gnu.org/software/libc/manual/html_node/Environment-Access.html#Environment-Access, glibc).
     */
-    void remove(scope const(char)[] name) @trusted nothrow @nogc
+    void remove(scope const(char)[] name) @trusted
     {
+        synchronized (mutex.writer)
         version (Windows)    SetEnvironmentVariableW(name.tempCStringW(), null);
         else version (Posix) core.sys.posix.stdlib.unsetenv(name.tempCString());
         else static assert(0);
@@ -329,6 +342,8 @@ static:
     {
         if (name is null)
             return false;
+
+        synchronized (mutex.reader)
         version (Posix)
             return core.sys.posix.stdlib.getenv(name.tempCString()) !is null;
         else version (Windows)
@@ -363,6 +378,8 @@ static:
     {
         import std.conv : to;
         string[string] aa;
+
+        synchronized (mutex.reader)
         version (Posix)
         {
             auto environ = getEnvironPtr;
@@ -428,12 +445,13 @@ private:
     // Retrieves the environment variable. Calls `sink` with a
     // temporary buffer of OS characters, or `null` if the variable
     // doesn't exist.
-    void getImpl(scope const(char)[] name, scope void delegate(const(OSChar)[]) @safe sink) @trusted
+    void getImpl(scope const(char)[] name, scope void delegate(scope const(OSChar)[]) @safe sink) @trusted
     {
         // fix issue https://issues.dlang.org/show_bug.cgi?id=24549
         if (name is null)
             return sink(null);
 
+        synchronized (mutex.reader)
         version (Windows)
         {
             // first we ask windows how long the environment variable is,
