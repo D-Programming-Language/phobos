@@ -1,0 +1,39 @@
+New procedural API for `std.sumtype`
+
+`std.sumtype` has three new convenience functions for querying and retrieving
+the value of a `SumType` object.
+
+* `has!T` returns `true` if the `SumType` object has a value of type `T`.
+* `get!T` returns the value if its type is `T`, or asserts if it is not.
+* `tryGet!T` returns the value if its type is `T`, or throws an exception if it
+   is not.
+
+These functions make it easier to write code using `SumType` in a procedural
+style, as opposed to the functional style encouraged by `match`.
+
+Example:
+
+---
+import std.sumtype;
+import std.stdio;
+
+SumType!(string, double) example = "hello";
+
+if (example.has!string)
+{
+    writeln("string: ", example.get!string);
+}
+else if (example.has!double)
+{
+    writeln("double: ", example.get!double);
+}
+
+try
+{
+    writeln("double: ", example.tryGet!double);
+}
+catch (MatchException e)
+{
+    writeln("Couldn't get a double.");
+}
+---
