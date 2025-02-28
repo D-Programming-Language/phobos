@@ -19,6 +19,9 @@ $(TR $(TD Strings) $(TD
         $(LREF text)
         $(LREF wtext)
         $(LREF dtext)
+        $(LREF writeText)
+        $(LREF writeWText)
+        $(LREF writeDText)
         $(LREF hexString)
 ))
 $(TR $(TD Numeric) $(TD
@@ -4835,6 +4838,75 @@ if (T.length > 0) { return textImpl!dstring(args); }
     assert(dtext(cs, ' ', ws, " ", ds) == "今日は 여보세요 Здравствуйте"d);
 }
 
+/// Convenience functions for writing arguments to an output range as text.
+void writeText(Sink, T...)(ref Sink sink, T args)
+if (isOutputRange!(Sink, char) && T.length > 0)
+{
+    sink.writeTextImpl!string(args);
+}
+
+/// ditto
+void writeWText(Sink, T...)(ref Sink sink, T args)
+if (isOutputRange!(Sink, wchar) && T.length > 0)
+{
+    sink.writeTextImpl!wstring(args);
+}
+
+/// ditto
+void writeDText(Sink, T...)(ref Sink sink, T args)
+if (isOutputRange!(Sink, dchar) && T.length > 0)
+{
+    sink.writeTextImpl!dstring(args);
+}
+
+///
+@safe unittest
+{
+    import std.array : appender;
+
+    auto output = appender!string();
+    output.writeText("The answer is ", 42);
+
+    assert(output.data == "The answer is 42");
+}
+
+///
+@safe unittest
+{
+    import std.array : appender;
+
+    const color = "red";
+    auto output = appender!string();
+    output.writeText(i"My favorite color is $(color)");
+
+    assert(output.data == "My favorite color is red");
+}
+
+@safe unittest
+{
+    auto capp = appender!string();
+    auto wapp = appender!wstring();
+    auto dapp = appender!dstring();
+
+    capp.writeText(42, ' ', 1.5, ": xyz");
+    wapp.writeWText(42, ' ', 1.5, ": xyz");
+    dapp.writeDText(42, ' ', 1.5, ": xyz");
+
+    assert(capp.data == "42 1.5: xyz"c);
+    assert(wapp.data == "42 1.5: xyz"w);
+    assert(dapp.data == "42 1.5: xyz"d);
+}
+
+// Check range API compliance using OutputRange interface
+@system unittest
+{
+    import std.range.interfaces : OutputRange, outputRangeObject;
+    import std.range : nullSink;
+
+    OutputRange!char testOutput = outputRangeObject!char(nullSink);
+    testOutput.writeText(42, ' ', 1.5, ": xyz");
+}
+
 private S textImpl(S, U...)(U args)
 {
     static if (U.length == 0)
@@ -4855,27 +4927,32 @@ private S textImpl(S, U...)(U args)
         // assume that on average, parameters will have less
         // than 20 elements
         app.reserve(U.length * 20);
-        // Must be static foreach because of https://issues.dlang.org/show_bug.cgi?id=21209
-        static foreach (arg; args)
-        {
-            static if (
-                isSomeChar!(typeof(arg))
-                || isSomeString!(typeof(arg))
-                || ( isInputRange!(typeof(arg)) && isSomeChar!(ElementType!(typeof(arg))) )
-            )
-                app.put(arg);
-            else static if (
-
-                is(immutable typeof(arg) == immutable uint) || is(immutable typeof(arg) == immutable ulong) ||
-                is(immutable typeof(arg) == immutable int) || is(immutable typeof(arg) == immutable long)
-            )
-                // https://issues.dlang.org/show_bug.cgi?id=17712#c15
-                app.put(textImpl!(S)(arg));
-            else
-                app.put(to!S(arg));
-        }
-
+        app.writeTextImpl!S(args);
         return app.data;
+    }
+}
+
+private void writeTextImpl(S, Sink, U...)(ref Sink sink, U args)
+if (isSomeString!S && isOutputRange!(Sink, ElementEncodingType!S))
+{
+    // Must be static foreach because of https://issues.dlang.org/show_bug.cgi?id=21209
+    static foreach (arg; args)
+    {
+        static if (
+            isSomeChar!(typeof(arg))
+            || isSomeString!(typeof(arg))
+            || ( isInputRange!(typeof(arg)) && isSomeChar!(ElementType!(typeof(arg))) )
+        )
+            put(sink, arg);
+        else static if (
+
+            is(immutable typeof(arg) == immutable uint) || is(immutable typeof(arg) == immutable ulong) ||
+            is(immutable typeof(arg) == immutable int) || is(immutable typeof(arg) == immutable long)
+        )
+            // https://issues.dlang.org/show_bug.cgi?id=17712#c15
+            put(sink, textImpl!(S)(arg));
+        else
+            put(sink, to!S(arg));
     }
 }
 
